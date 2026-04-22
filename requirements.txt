@@ -1,0 +1,33 @@
+# ── PyTorch GPU (CUDA 12.1 — compatible CUDA 12.5) ───────
+# Installé séparément en premier (voir commandes ci-dessous)
+# torch==2.5.1+cu121
+# torchvision==0.20.1+cu121
+# torchaudio==2.5.1+cu121
+
+# ── Core RL ──────────────────────────────────────────────
+gymnasium==1.2.3
+pettingzoo==1.25.0
+stable-baselines3==2.7.0
+SuperSuit==3.10.0
+
+# ── Visualisation ─────────────────────────────────────────
+pygame==2.6.1
+opencv-python==4.10.0.84
+pillow==11.1.0
+matplotlib==3.10.0
+
+# ── Data / Utils ──────────────────────────────────────────
+numpy==2.2.0
+pandas==2.2.3
+tqdm==4.67.1
+rich==14.0.0
+cloudpickle==3.1.0
+
+# ── Logging / Monitoring ──────────────────────────────────
+tensorboard==2.19.0
+wandb
+
+# ── Dev ───────────────────────────────────────────────────
+pytest==8.3.5
+black
+ruff
