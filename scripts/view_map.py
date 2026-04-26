@@ -83,9 +83,9 @@ EAGLE_POS: dict[str, tuple[int, int]] = {
 
 PLAYER_SPAWNS: dict[str, list[tuple[int, int]]] = {
     # Flanking eagle: P1 left of eagle, P2 right of eagle (each 16px wide)
-    "classic": [(96 - 32, 192), (96 + 16, 192)],   # x=64, x=112
-    "medium":  [(192 - 32, 384), (192 + 16, 384)], # x=160, x=208
-    "xlarge":  [(288 - 32, 384), (288 + 16, 384)], # x=256, x=304
+    "classic": [(96 - 24, 192), (96 + 24, 192)],   # x=64, x=112
+    "medium":  [(192 - 24, 384), (192 + 24, 384)], # x=160, x=208
+    "xlarge":  [(288 - 24, 384), (288 + 24, 384)], # x=256, x=304
 }
 
 ENEMY_SPAWNS: dict[str, list[tuple[int, int]]] = {

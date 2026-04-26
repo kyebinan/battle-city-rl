@@ -13,9 +13,9 @@ Text file format (one char = one 8x8 block):
     '.' EMPTY  (0)
     '#' BRICK  (1)  -- destructible
     '@' STEEL  (2)  -- indestructible by default
-    '%' WATER  (3)  -- blocks tanks, bullets pass through
-    '-' FOREST (4)  -- hides tanks, bullets pass through
-    '~' ICE    (5)  -- passable, causes sliding
+    '~' WATER  (3)  -- blocks tanks, bullets pass through
+    '%' FOREST (4)  -- hides tanks, bullets pass through
+    '-' ICE    (5)  -- passable, causes sliding
 
 Spawnable objects (eagle, tanks) use x,y pixel coordinates (top-left corner
 of the 16x16 sprite). They are NOT stored in the grid -- they are spawned
@@ -197,16 +197,16 @@ _DEFAULT_PLAYER_SPAWNS: dict[str, list[TankSpawn]] = {
     # P1 = eagle_x - 32 (one 16px tile gap left)
     # P2 = eagle_x + 16 (one 16px tile gap right)
     "classic": [
-        TankSpawn(x=64,  y=192, direction="UP"),   # 96-32=64
-        TankSpawn(x=112, y=192, direction="UP"),   # 96+16=112
+        TankSpawn(x=72,  y=192, direction="UP"),   
+        TankSpawn(x=120, y=192, direction="UP"),   
     ],
     "medium": [
-        TankSpawn(x=160, y=384, direction="UP"),   # 192-32=160
-        TankSpawn(x=208, y=384, direction="UP"),   # 192+16=208
+        TankSpawn(x=168, y=384, direction="UP"),   
+        TankSpawn(x=216, y=384, direction="UP"),   
     ],
     "xlarge": [
-        TankSpawn(x=256, y=384, direction="UP"),   # 288-32=256
-        TankSpawn(x=304, y=384, direction="UP"),   # 288+16=304
+        TankSpawn(x=264, y=384, direction="UP"),  
+        TankSpawn(x=312, y=384, direction="UP"),  
     ],
 }
 
