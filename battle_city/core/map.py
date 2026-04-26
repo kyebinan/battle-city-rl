@@ -17,9 +17,10 @@ Text file format (one char = one 8x8 block):
     '%' FOREST (4)  -- hides tanks, bullets pass through
     '-' ICE    (5)  -- passable, causes sliding
 
-Spawnable objects (eagle, tanks) use x,y pixel coordinates (top-left corner
-of the 16x16 sprite). They are NOT stored in the grid -- they are spawned
-by World at runtime from the map metadata.
+Maps are loaded exclusively from .txt files via MapData.from_txt().
+Spawnable objects (eagle, tanks) use x,y pixel coordinates (top-left
+corner of the 16x16 sprite). They are NOT stored in the grid -- they
+are spawned by World at runtime from the map metadata.
 
 No external dependencies (no pygame).
 Loaded by MapLoader, not directly by client code.
@@ -28,7 +29,6 @@ Loaded by MapLoader, not directly by client code.
 from __future__ import annotations
 
 import copy
-import json
 from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
@@ -40,7 +40,7 @@ from typing import Iterator
 # ---------------------------------------------------------------------------
 
 class TileType(IntEnum):
-    """One 8x8px block type. Values match the JSON grid encoding."""
+    """One 8x8px block type. Values match the txt file symbol encoding."""
     EMPTY  = 0
     BRICK  = 1
     STEEL  = 2
@@ -59,6 +59,8 @@ CHAR_TO_TILE: dict[str, TileType] = {
 }
 
 TILE_TO_CHAR: dict[TileType, str] = {v: k for k, v in CHAR_TO_TILE.items()}
+
+VALID_CHARS: frozenset[str] = frozenset(CHAR_TO_TILE.keys())
 
 
 # ---------------------------------------------------------------------------
@@ -194,39 +196,38 @@ _DEFAULT_EAGLE: dict[str, EagleSpawn] = {
 }
 
 _DEFAULT_PLAYER_SPAWNS: dict[str, list[TankSpawn]] = {
-    # P1 = eagle_x - 32 (one 16px tile gap left)
-    # P2 = eagle_x + 16 (one 16px tile gap right)
+    # P1 = eagle_x - 32 (two 16px tiles to the left)
+    # P2 = eagle_x + 16 (one 16px tile to the right)
     "classic": [
-        TankSpawn(x=72,  y=192, direction="UP"),   
-        TankSpawn(x=120, y=192, direction="UP"),   
+        TankSpawn(x=64,  y=192, direction="UP"),
+        TankSpawn(x=112, y=192, direction="UP"),
     ],
     "medium": [
-        TankSpawn(x=168, y=384, direction="UP"),   
-        TankSpawn(x=216, y=384, direction="UP"),   
+        TankSpawn(x=160, y=384, direction="UP"),
+        TankSpawn(x=208, y=384, direction="UP"),
     ],
     "xlarge": [
-        TankSpawn(x=264, y=384, direction="UP"),  
-        TankSpawn(x=312, y=384, direction="UP"),  
+        TankSpawn(x=256, y=384, direction="UP"),
+        TankSpawn(x=304, y=384, direction="UP"),
     ],
 }
 
 _DEFAULT_ENEMY_SPAWNS: dict[str, list[TankSpawn]] = {
     # Three spawn points: left edge, centre, right edge (y=0, top of map)
-    # Centre x = eagle_x (same horizontal centre as eagle)
     "classic": [
         TankSpawn(x=0,   y=0, direction="DOWN"),   # left
-        TankSpawn(x=96,  y=0, direction="DOWN"),   # centre (208//2 - 8 = 96)
-        TankSpawn(x=192, y=0, direction="DOWN"),   # right  (208 - 16 = 192)
+        TankSpawn(x=96,  y=0, direction="DOWN"),   # centre
+        TankSpawn(x=192, y=0, direction="DOWN"),   # right
     ],
     "medium": [
         TankSpawn(x=0,   y=0, direction="DOWN"),
-        TankSpawn(x=192, y=0, direction="DOWN"),   # centre (400//2 - 8 = 192)
-        TankSpawn(x=384, y=0, direction="DOWN"),   # right  (400 - 16 = 384)
+        TankSpawn(x=192, y=0, direction="DOWN"),
+        TankSpawn(x=384, y=0, direction="DOWN"),
     ],
     "xlarge": [
         TankSpawn(x=0,   y=0, direction="DOWN"),
-        TankSpawn(x=288, y=0, direction="DOWN"),   # centre (592//2 - 8 = 288)
-        TankSpawn(x=576, y=0, direction="DOWN"),   # right  (592 - 16 = 576)
+        TankSpawn(x=288, y=0, direction="DOWN"),
+        TankSpawn(x=576, y=0, direction="DOWN"),
     ],
 }
 
@@ -238,8 +239,11 @@ _DEFAULT_ENEMY_SPAWNS: dict[str, list[TankSpawn]] = {
 @dataclass(frozen=True)
 class MapData:
     """
-    Static map configuration.
+    Static map configuration loaded from a .txt file.
     Immutable after construction -- acts as a Value Object.
+
+    Single construction path: MapData.from_txt()
+    Maps are always loaded from text files -- no JSON loading.
 
     Spawnable objects (eagle, tanks) use x,y pixel coordinates.
     The grid contains terrain tiles only.
@@ -293,7 +297,7 @@ class MapData:
         return self.format_name == "xlarge"
 
     # ------------------------------------------------------------------
-    # Construction from text file
+    # Construction -- single entry point
     # ------------------------------------------------------------------
 
     @classmethod
@@ -308,8 +312,18 @@ class MapData:
         """
         Load a .txt map file and build a MapData.
 
-        Raises FileNotFoundError if the file is missing.
-        Raises ValueError if format_name is unknown.
+        This is the only way to construct a MapData.
+
+        Args:
+            path:        path to the .txt file
+            format_name: "classic" | "medium" | "xlarge"
+            stage:       NES stage number (classic maps only)
+            scenario:    custom scenario number (medium / xlarge maps)
+            enemies:     enemy composition -- uses defaults if None
+
+        Raises:
+            FileNotFoundError: if the file does not exist
+            ValueError:        if format_name is unknown
         """
         if not path.exists():
             raise FileNotFoundError(f"Map file not found: {path}")
@@ -322,8 +336,8 @@ class MapData:
         fmt   = FORMATS[format_name]
         lines = path.read_text(encoding="utf-8").splitlines()
 
-        # Keep only lines that are part of the map (skip legend lines)
-        map_lines = [l for l in lines if set(l) <= set(CHAR_TO_TILE.keys())]
+        # Filter out legend / comment lines -- keep only valid map rows
+        map_lines = [l for l in lines if l and set(l) <= VALID_CHARS]
 
         grid_rows: list[tuple[int, ...]] = []
         for i in range(fmt.rows):
@@ -359,78 +373,6 @@ class MapData:
             max_on_screen = 4,
             total_enemies = sum(ens.values()),
         )
-
-    # ------------------------------------------------------------------
-    # Construction from JSON
-    # ------------------------------------------------------------------
-
-    @classmethod
-    def from_json(cls, path: Path) -> MapData:
-        """Load a JSON map file. Raises FileNotFoundError / ValueError."""
-        if not path.exists():
-            raise FileNotFoundError(f"Map file not found: {path}")
-
-        with path.open(encoding="utf-8") as f:
-            d = json.load(f)
-
-        try:
-            raw_grid = tuple(tuple(row) for row in d["grid"])
-            eagle    = EagleSpawn(**d["eagle"])
-            pspawns  = tuple(TankSpawn(**s) for s in d["player_spawns"])
-            espawns  = tuple(TankSpawn(**s) for s in d["enemy_spawns"])
-            enemies  = d["enemies"]
-
-            return cls(
-                name          = d["name"],
-                format_name   = d["format"],
-                stage         = d.get("stage"),
-                scenario      = d.get("scenario"),
-                description   = d.get("description", ""),
-                cols          = d["grid_size"]["cols"],
-                rows          = d["grid_size"]["rows"],
-                block_px      = d.get("block_px", 8),
-                raw_grid      = raw_grid,
-                eagle         = eagle,
-                player_spawns = pspawns,
-                enemy_spawns  = espawns,
-                enemies       = enemies,
-                max_on_screen = d.get("max_enemies_on_screen", 4),
-                total_enemies = d.get("total_enemies", sum(enemies.values())),
-            )
-        except KeyError as e:
-            raise ValueError(f"Invalid map JSON -- missing key: {e}") from e
-
-    # ------------------------------------------------------------------
-    # Export to JSON
-    # ------------------------------------------------------------------
-
-    def to_json(self, path: Path) -> None:
-        """Serialise this MapData to a JSON file."""
-        data = {
-            "name":        self.name,
-            "format":      self.format_name,
-            "stage":       self.stage,
-            "scenario":    self.scenario,
-            "description": self.description,
-            "grid_size":   {"cols": self.cols, "rows": self.rows},
-            "block_px":    self.block_px,
-            "grid":        [list(row) for row in self.raw_grid],
-            "eagle":       {"x": self.eagle.x, "y": self.eagle.y},
-            "player_spawns": [
-                {"x": s.x, "y": s.y, "direction": s.direction}
-                for s in self.player_spawns
-            ],
-            "enemy_spawns": [
-                {"x": s.x, "y": s.y, "direction": s.direction}
-                for s in self.enemy_spawns
-            ],
-            "enemies":               self.enemies,
-            "max_enemies_on_screen": self.max_on_screen,
-            "total_enemies":         self.total_enemies,
-        }
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=True)
 
     # ------------------------------------------------------------------
     # Validation

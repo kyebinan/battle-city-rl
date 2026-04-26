@@ -3,14 +3,22 @@ tests/unit/test_map.py
 
 Unit tests for battle_city/core/map.py.
 
+Symbol mapping (from _model.txt):
+    '.' EMPTY  (0)
+    '#' BRICK  (1)
+    '@' STEEL  (2)
+    '~' WATER  (3)
+    '%' FOREST (4)
+    '-' ICE    (5)
+
 Coverage:
-    - TileType, CHAR_TO_TILE, TILE_TO_CHAR
+    - TileType values and CHAR_TO_TILE / TILE_TO_CHAR mappings
     - TileProperties per type
     - Position: creation, add, neighbors, to_pixel, from_pixel, hash
-    - EagleSpawn, TankSpawn: x,y pixel fields, no col/row
+    - EagleSpawn / TankSpawn: x,y pixel fields, no col/row
     - MapFormat: pixel/logical dimensions for all 3 formats
     - MapData.from_txt: classic (26x26), medium (50x50), xlarge (74x50)
-    - MapData.from_json / to_json roundtrip
+    - MapData: only from_txt -- no from_json / to_json
     - MapData: pixel dims, logical dims, validate, format flags
     - TileMap: get/set/destroy, passability, reset, clone
     - TileMap: block_pixel_rect, position_from_pixel, pixel_size
@@ -19,14 +27,13 @@ Coverage:
     - TileMap metadata: eagle/spawns expose x,y not col/row
 """
 
-import json
 import pytest
 from pathlib import Path
 
 from battle_city.core.map import (
     TileType, TileProperties, TileMap, MapData,
     Position, EagleSpawn, TankSpawn, MapFormat,
-    tile_properties, CHAR_TO_TILE, TILE_TO_CHAR,
+    tile_properties, CHAR_TO_TILE, TILE_TO_CHAR, VALID_CHARS,
     FORMATS, _DEFAULT_EAGLE, _DEFAULT_PLAYER_SPAWNS, _DEFAULT_ENEMY_SPAWNS,
 )
 
@@ -36,45 +43,15 @@ from battle_city.core.map import (
 # ---------------------------------------------------------------------------
 
 def _make_txt(cols: int, rows: int, tmp: Path, name: str = "map.txt") -> Path:
-    """Write a minimal txt map with one of each tile in row 0."""
-    row0 = "#@%-~" + "." * (cols - 5)
+    """
+    Write a minimal .txt map with one of each tile type in row 0.
+    Row 0: # @ ~ % - . . . ...   (BRICK STEEL WATER FOREST ICE EMPTY...)
+    All other rows: EMPTY
+    """
+    row0  = "#@~%-" + "." * (cols - 5)
     lines = [row0[:cols]] + ["." * cols] * (rows - 1)
     p = tmp / name
     p.write_text("\n".join(lines), encoding="utf-8")
-    return p
-
-
-def _make_json(cols: int, rows: int, fmt: str, tmp: Path,
-               stage: "int | None" = None,
-               scenario: "int | None" = None) -> Path:
-    grid = [[0] * cols for _ in range(rows)]
-    grid[0][0] = 1
-    grid[0][1] = 2
-    eagle = _DEFAULT_EAGLE[fmt]
-    ps    = _DEFAULT_PLAYER_SPAWNS[fmt]
-    es    = _DEFAULT_ENEMY_SPAWNS[fmt]
-    data  = {
-        "name":        "test",
-        "format":      fmt,
-        "stage":       stage,
-        "scenario":    scenario,
-        "description": "test",
-        "grid_size":   {"cols": cols, "rows": rows},
-        "block_px":    8,
-        "grid":        grid,
-        "eagle":       {"x": eagle.x, "y": eagle.y},
-        "player_spawns": [
-            {"x": s.x, "y": s.y, "direction": s.direction} for s in ps
-        ],
-        "enemy_spawns": [
-            {"x": s.x, "y": s.y, "direction": s.direction} for s in es
-        ],
-        "enemies":               {"basic": 18, "fast": 2, "power": 0, "armor": 0},
-        "max_enemies_on_screen": 4,
-        "total_enemies":         20,
-    }
-    p = tmp / "map.json"
-    p.write_text(json.dumps(data), encoding="utf-8")
     return p
 
 
@@ -143,13 +120,30 @@ class TestTileType:
         assert CHAR_TO_TILE['.'] == TileType.EMPTY
         assert CHAR_TO_TILE['#'] == TileType.BRICK
         assert CHAR_TO_TILE['@'] == TileType.STEEL
-        assert CHAR_TO_TILE['%'] == TileType.WATER
-        assert CHAR_TO_TILE['-'] == TileType.FOREST
-        assert CHAR_TO_TILE['~'] == TileType.ICE
+        assert CHAR_TO_TILE['~'] == TileType.WATER   # ~ = WATER
+        assert CHAR_TO_TILE['%'] == TileType.FOREST  # % = FOREST
+        assert CHAR_TO_TILE['-'] == TileType.ICE     # - = ICE
+
+    def test_tile_to_char(self):
+        assert TILE_TO_CHAR[TileType.EMPTY]  == '.'
+        assert TILE_TO_CHAR[TileType.BRICK]  == '#'
+        assert TILE_TO_CHAR[TileType.STEEL]  == '@'
+        assert TILE_TO_CHAR[TileType.WATER]  == '~'
+        assert TILE_TO_CHAR[TileType.FOREST] == '%'
+        assert TILE_TO_CHAR[TileType.ICE]    == '-'
 
     def test_roundtrip(self):
         for ch, tile in CHAR_TO_TILE.items():
             assert TILE_TO_CHAR[tile] == ch
+
+    def test_valid_chars(self):
+        assert '.' in VALID_CHARS
+        assert '#' in VALID_CHARS
+        assert '@' in VALID_CHARS
+        assert '~' in VALID_CHARS
+        assert '%' in VALID_CHARS
+        assert '-' in VALID_CHARS
+        assert 'X' not in VALID_CHARS
 
 
 # ---------------------------------------------------------------------------
@@ -157,35 +151,45 @@ class TestTileType:
 # ---------------------------------------------------------------------------
 
 class TestTileProperties:
+    def test_empty(self):
+        p = tile_properties(TileType.EMPTY)
+        assert p.passable_tank   is True
+        assert p.passable_bullet is True
+        assert p.destructible    is False
+        assert p.hides_tank      is False
+        assert p.slippery        is False
+
     def test_brick(self):
         p = tile_properties(TileType.BRICK)
-        assert not p.passable_tank
-        assert not p.passable_bullet
-        assert p.destructible
+        assert p.passable_tank   is False
+        assert p.passable_bullet is False
+        assert p.destructible    is True
 
     def test_steel(self):
         p = tile_properties(TileType.STEEL)
-        assert not p.passable_tank
-        assert not p.destructible
+        assert p.passable_tank   is False
+        assert p.passable_bullet is False
+        assert p.destructible    is False  # 3-star handled by CollisionSystem
 
     def test_water(self):
         p = tile_properties(TileType.WATER)
-        assert not p.passable_tank
-        assert p.passable_bullet
+        assert p.passable_tank   is False
+        assert p.passable_bullet is True
+        assert p.destructible    is False
 
     def test_forest(self):
         p = tile_properties(TileType.FOREST)
-        assert p.passable_tank
-        assert p.hides_tank
+        assert p.passable_tank   is True
+        assert p.passable_bullet is True
+        assert p.hides_tank      is True
+        assert p.destructible    is False
 
     def test_ice(self):
-        assert tile_properties(TileType.ICE).slippery
-
-    def test_empty(self):
-        p = tile_properties(TileType.EMPTY)
-        assert p.passable_tank
-        assert p.passable_bullet
-        assert not p.destructible
+        p = tile_properties(TileType.ICE)
+        assert p.passable_tank   is True
+        assert p.passable_bullet is True
+        assert p.slippery        is True
+        assert p.destructible    is False
 
 
 # ---------------------------------------------------------------------------
@@ -230,39 +234,44 @@ class TestPosition:
 
 
 # ---------------------------------------------------------------------------
-# EagleSpawn / TankSpawn
+# EagleSpawn / TankSpawn -- x,y pixel fields only
 # ---------------------------------------------------------------------------
 
 class TestSpawnDescriptors:
     def test_eagle_fields(self):
-        e = EagleSpawn(x=88, y=192)
-        assert e.x == 88 and e.y == 192
+        e = EagleSpawn(x=96, y=192)
+        assert e.x == 96 and e.y == 192
+
+    def test_eagle_no_col_row(self):
+        e = EagleSpawn(x=96, y=192)
+        assert not hasattr(e, 'col')
+        assert not hasattr(e, 'row')
 
     def test_tank_fields(self):
         t = TankSpawn(x=64, y=192, direction="UP")
         assert t.x == 64 and t.y == 192 and t.direction == "UP"
 
+    def test_tank_no_col_row(self):
+        t = TankSpawn(x=64, y=192, direction="UP")
+        assert not hasattr(t, 'col')
+        assert not hasattr(t, 'row')
+
     def test_eagle_immutable(self):
         with pytest.raises(Exception):
-            EagleSpawn(x=88, y=192).x = 0  # type: ignore
-
-    def test_eagle_no_col_row(self):
-        e = EagleSpawn(x=88, y=192)
-        assert not hasattr(e, 'col')
-        assert not hasattr(e, 'row')
+            EagleSpawn(x=96, y=192).x = 0  # type: ignore
 
     # Default positions per format
     def test_classic_eagle(self):
         e = _DEFAULT_EAGLE["classic"]
-        assert e.x == 96 and e.y == 192
+        assert e.x == 96 and e.y == 192    # (208-16)//2 = 96
 
     def test_medium_eagle(self):
         e = _DEFAULT_EAGLE["medium"]
-        assert e.x == 192 and e.y == 384
+        assert e.x == 192 and e.y == 384   # (400-16)//2 = 192
 
     def test_xlarge_eagle(self):
         e = _DEFAULT_EAGLE["xlarge"]
-        assert e.x == 288 and e.y == 384
+        assert e.x == 288 and e.y == 384   # (592-16)//2 = 288
 
     def test_classic_player_spawns(self):
         ps = _DEFAULT_PLAYER_SPAWNS["classic"]
@@ -325,18 +334,20 @@ class TestMapFormat:
 
     def test_xlarge(self):
         f = FORMATS["xlarge"]
-        assert f.cols == 74 and f.rows == 50    # 74 cols confirmed from _model.txt
-        assert f.pixel_width  == 592            # 74 * 8
-        assert f.pixel_height == 400            # 50 * 8
-        assert f.logical_cols == 37             # 74 // 2
-        assert f.logical_rows == 25             # 50 // 2
+        assert f.cols == 74 and f.rows == 50
+        assert f.pixel_width  == 592
+        assert f.pixel_height == 400
+        assert f.logical_cols == 37
+        assert f.logical_rows == 25
 
 
 # ---------------------------------------------------------------------------
-# MapData.from_txt
+# MapData.from_txt -- single construction path
 # ---------------------------------------------------------------------------
 
 class TestMapDataFromTxt:
+
+    # --- format flags ---
     def test_classic_fields(self, classic_data):
         d = classic_data
         assert d.format_name == "classic"
@@ -362,15 +373,39 @@ class TestMapDataFromTxt:
         assert xlarge_data.rows        == 50
         assert xlarge_data.is_xlarge
 
-    def test_tile_parsing(self, classic_data):
+    # --- tile parsing with correct symbol mapping ---
+    def test_tile_parsing_symbols(self, classic_data):
+        """Row 0: # @ ~ % - . -- verify correct symbol->TileType mapping."""
         g = classic_data.raw_grid
-        assert g[0][0] == TileType.BRICK
-        assert g[0][1] == TileType.STEEL
-        assert g[0][2] == TileType.WATER
-        assert g[0][3] == TileType.FOREST
-        assert g[0][4] == TileType.ICE
-        assert g[0][5] == TileType.EMPTY
+        assert g[0][0] == TileType.BRICK   # '#'
+        assert g[0][1] == TileType.STEEL   # '@'
+        assert g[0][2] == TileType.WATER   # '~'
+        assert g[0][3] == TileType.FOREST  # '%'
+        assert g[0][4] == TileType.ICE     # '-'
+        assert g[0][5] == TileType.EMPTY   # '.'
 
+    def test_water_is_tilde(self, tmp_path):
+        """~ must map to WATER, not any other tile."""
+        p = tmp_path / "w.txt"
+        p.write_text("~" * 26 + "\n" + "." * 26 * 25, encoding="utf-8")
+        d = MapData.from_txt(p, "classic")
+        assert all(v == TileType.WATER for v in d.raw_grid[0])
+
+    def test_forest_is_percent(self, tmp_path):
+        """% must map to FOREST."""
+        p = tmp_path / "f.txt"
+        p.write_text("%" * 26 + "\n" + "." * 26 * 25, encoding="utf-8")
+        d = MapData.from_txt(p, "classic")
+        assert all(v == TileType.FOREST for v in d.raw_grid[0])
+
+    def test_ice_is_dash(self, tmp_path):
+        """- must map to ICE."""
+        p = tmp_path / "i.txt"
+        p.write_text("-" * 26 + "\n" + "." * 26 * 25, encoding="utf-8")
+        d = MapData.from_txt(p, "classic")
+        assert all(v == TileType.ICE for v in d.raw_grid[0])
+
+    # --- grid dimensions ---
     def test_grid_dimensions_classic(self, classic_data):
         assert len(classic_data.raw_grid)    == 26
         assert len(classic_data.raw_grid[0]) == 26
@@ -383,6 +418,7 @@ class TestMapDataFromTxt:
         assert len(xlarge_data.raw_grid)    == 50
         assert len(xlarge_data.raw_grid[0]) == 74
 
+    # --- eagle / spawns ---
     def test_eagle_x_y_classic(self, classic_data):
         assert classic_data.eagle.x == 96
         assert classic_data.eagle.y == 192
@@ -391,15 +427,16 @@ class TestMapDataFromTxt:
         assert xlarge_data.eagle.x == 288
         assert xlarge_data.eagle.y == 384
 
-    def test_player_spawns_x_y(self, classic_data):
+    def test_player_spawns(self, classic_data):
         ps = classic_data.player_spawns
         assert len(ps) == 2
         assert ps[0].x == 64  and ps[0].y == 192
         assert ps[1].x == 112 and ps[1].y == 192
 
-    def test_enemy_spawns_y_zero(self, classic_data):
+    def test_enemy_spawns_at_top(self, classic_data):
         assert all(s.y == 0 for s in classic_data.enemy_spawns)
 
+    # --- errors ---
     def test_missing_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             MapData.from_txt(tmp_path / "nope.txt", "classic")
@@ -408,13 +445,24 @@ class TestMapDataFromTxt:
         with pytest.raises(ValueError, match="Unknown format"):
             MapData.from_txt(classic_txt, "giant")
 
+    # --- no JSON methods ---
+    def test_no_from_json(self):
+        assert not hasattr(MapData, 'from_json')
+
+    def test_no_to_json(self):
+        assert not hasattr(MapData, 'to_json')
+
+    # --- validate ---
     def test_validate_classic(self, classic_data):
         classic_data.validate()
+
+    def test_validate_medium(self, medium_data):
+        medium_data.validate()
 
     def test_validate_xlarge(self, xlarge_data):
         xlarge_data.validate()
 
-    def test_short_file_padded(self, tmp_path):
+    def test_short_file_padded_with_empty(self, tmp_path):
         p = tmp_path / "short.txt"
         p.write_text("##\n", encoding="utf-8")
         d = MapData.from_txt(p, "classic")
@@ -422,65 +470,19 @@ class TestMapDataFromTxt:
         assert len(d.raw_grid[0]) == 26
         assert all(v == TileType.EMPTY for v in d.raw_grid[2])
 
-    def test_legend_lines_ignored(self, tmp_path):
-        """_model.txt contains legend lines -- they must not be parsed as tiles."""
+    def test_legend_lines_filtered_out(self, tmp_path):
+        """Lines with non-map chars (legend) must be ignored."""
         content = (
-            "#..#\n"
-            "....\n"
-            "\n"
-            "'.' EMPTY\n"
-            "'#' BRICK\n"
+            "#" * 26 + "\n"
+            + "." * 26 + "\n"
+            + "'.' EMPTY  (0)\n"
+            + "'#' BRICK  (1)\n"
+            + "'~' WATER  (3)\n"
         )
-        p = tmp_path / "model.txt"
+        p = tmp_path / "legend.txt"
         p.write_text(content, encoding="utf-8")
         d = MapData.from_txt(p, "classic")
-        # Legend lines are filtered out -- grid should only have map rows
         assert len(d.raw_grid) == 26
-
-
-# ---------------------------------------------------------------------------
-# MapData.from_json / to_json roundtrip
-# ---------------------------------------------------------------------------
-
-class TestMapDataJSON:
-    def test_to_json_creates_file(self, classic_data, tmp_path):
-        out = tmp_path / "out.json"
-        classic_data.to_json(out)
-        assert out.exists()
-
-    def test_roundtrip_fields(self, classic_data, tmp_path):
-        out = tmp_path / "rt.json"
-        classic_data.to_json(out)
-        loaded = MapData.from_json(out)
-        assert loaded.cols          == classic_data.cols
-        assert loaded.rows          == classic_data.rows
-        assert loaded.eagle.x       == classic_data.eagle.x
-        assert loaded.eagle.y       == classic_data.eagle.y
-        assert loaded.player_spawns == classic_data.player_spawns
-        assert loaded.enemy_spawns  == classic_data.enemy_spawns
-        assert loaded.raw_grid      == classic_data.raw_grid
-        assert loaded.format_name   == classic_data.format_name
-
-    def test_json_eagle_has_x_y_not_col_row(self, classic_data, tmp_path):
-        out = tmp_path / "e.json"
-        classic_data.to_json(out)
-        raw = json.loads(out.read_text())
-        assert "x" in raw["eagle"] and "y" in raw["eagle"]
-        assert "col" not in raw["eagle"]
-        assert "row" not in raw["eagle"]
-
-    def test_json_spawns_have_x_y_not_col_row(self, classic_data, tmp_path):
-        out = tmp_path / "s.json"
-        classic_data.to_json(out)
-        raw = json.loads(out.read_text())
-        for sp in raw["player_spawns"] + raw["enemy_spawns"]:
-            assert "x" in sp and "y" in sp
-            assert "col" not in sp
-            assert "row" not in sp
-
-    def test_missing_json_raises(self, tmp_path):
-        with pytest.raises(FileNotFoundError):
-            MapData.from_json(tmp_path / "nope.json")
 
 
 # ---------------------------------------------------------------------------
@@ -489,22 +491,22 @@ class TestMapDataJSON:
 
 class TestMapDataDimensions:
     def test_classic(self, classic_data):
-        assert classic_data.pixel_width  == 208
+        assert classic_data.pixel_width  == 208   # 26 * 8
         assert classic_data.pixel_height == 208
-        assert classic_data.logical_cols == 13
+        assert classic_data.logical_cols == 13    # 26 // 2
         assert classic_data.logical_rows == 13
 
     def test_medium(self, medium_data):
-        assert medium_data.pixel_width  == 400
+        assert medium_data.pixel_width  == 400    # 50 * 8
         assert medium_data.pixel_height == 400
         assert medium_data.logical_cols == 25
         assert medium_data.logical_rows == 25
 
     def test_xlarge(self, xlarge_data):
-        assert xlarge_data.pixel_width  == 592   # 74 * 8
-        assert xlarge_data.pixel_height == 400   # 50 * 8
-        assert xlarge_data.logical_cols == 37    # 74 // 2
-        assert xlarge_data.logical_rows == 25    # 50 // 2
+        assert xlarge_data.pixel_width  == 592    # 74 * 8
+        assert xlarge_data.pixel_height == 400    # 50 * 8
+        assert xlarge_data.logical_cols == 37     # 74 // 2
+        assert xlarge_data.logical_rows == 25     # 50 // 2
 
 
 # ---------------------------------------------------------------------------
@@ -513,6 +515,7 @@ class TestMapDataDimensions:
 
 class TestTileMapGrid:
     def test_initial_tiles(self, classic_tm):
+        # Row 0: # @ ~ % - .
         assert classic_tm.get(Position(0, 0)) == TileType.BRICK
         assert classic_tm.get(Position(1, 0)) == TileType.STEEL
         assert classic_tm.get(Position(2, 0)) == TileType.WATER
@@ -545,30 +548,36 @@ class TestTileMapGrid:
         assert classic_tm.destroy(Position(2, 0)) is False
 
     def test_passable_tank(self, classic_tm):
-        assert classic_tm.is_passable_for_tank(Position(5, 0)) is True
-        assert classic_tm.is_passable_for_tank(Position(0, 0)) is False
-        assert classic_tm.is_passable_for_tank(Position(2, 0)) is False
-        assert classic_tm.is_passable_for_tank(Position(3, 0)) is True
-        assert classic_tm.is_passable_for_tank(Position(4, 0)) is True
+        assert classic_tm.is_passable_for_tank(Position(5, 0)) is True   # EMPTY
+        assert classic_tm.is_passable_for_tank(Position(0, 0)) is False  # BRICK
+        assert classic_tm.is_passable_for_tank(Position(1, 0)) is False  # STEEL
+        assert classic_tm.is_passable_for_tank(Position(2, 0)) is False  # WATER
+        assert classic_tm.is_passable_for_tank(Position(3, 0)) is True   # FOREST
+        assert classic_tm.is_passable_for_tank(Position(4, 0)) is True   # ICE
 
     def test_passable_bullet(self, classic_tm):
-        assert classic_tm.is_passable_for_bullet(Position(2, 0)) is True
-        assert classic_tm.is_passable_for_bullet(Position(0, 0)) is False
+        assert classic_tm.is_passable_for_bullet(Position(2, 0)) is True   # WATER
+        assert classic_tm.is_passable_for_bullet(Position(3, 0)) is True   # FOREST
+        assert classic_tm.is_passable_for_bullet(Position(0, 0)) is False  # BRICK
+        assert classic_tm.is_passable_for_bullet(Position(1, 0)) is False  # STEEL
 
     def test_oob_passable_false(self, classic_tm):
         assert classic_tm.is_passable_for_tank(Position(-1, 0))   is False
         assert classic_tm.is_passable_for_bullet(Position(0, 99)) is False
 
-    def test_hides_forest(self, classic_tm):
-        assert classic_tm.hides_tank(Position(3, 0)) is True
-        assert classic_tm.hides_tank(Position(5, 0)) is False
+    def test_hides_forest_only(self, classic_tm):
+        assert classic_tm.hides_tank(Position(3, 0)) is True   # FOREST
+        assert classic_tm.hides_tank(Position(4, 0)) is False  # ICE
+        assert classic_tm.hides_tank(Position(5, 0)) is False  # EMPTY
 
-    def test_slippery_ice(self, classic_tm):
-        assert classic_tm.is_slippery(Position(4, 0)) is True
-        assert classic_tm.is_slippery(Position(5, 0)) is False
+    def test_slippery_ice_only(self, classic_tm):
+        assert classic_tm.is_slippery(Position(4, 0)) is True   # ICE
+        assert classic_tm.is_slippery(Position(3, 0)) is False  # FOREST
+        assert classic_tm.is_slippery(Position(5, 0)) is False  # EMPTY
 
     def test_reset(self, classic_tm):
         classic_tm.destroy(Position(0, 0))
+        assert classic_tm.get(Position(0, 0)) == TileType.EMPTY
         classic_tm.reset()
         assert classic_tm.get(Position(0, 0)) == TileType.BRICK
 
@@ -599,7 +608,7 @@ class TestTileMapPixelDimensions:
         assert medium_tm.rows         == 50
 
     def test_xlarge(self, xlarge_tm):
-        assert xlarge_tm.pixel_size   == (592, 400)  # 74*8, 50*8
+        assert xlarge_tm.pixel_size   == (592, 400)
         assert xlarge_tm.pixel_width  == 592
         assert xlarge_tm.pixel_height == 400
         assert xlarge_tm.cols         == 74
@@ -648,16 +657,16 @@ class TestTileMapIteration:
 
     def test_repr_symbols(self, classic_tm):
         r = repr(classic_tm)
-        assert '#' in r
-        assert '@' in r
-        assert '%' in r
-        assert '-' in r
-        assert '~' in r
-        assert '.' in r
+        assert '#' in r   # BRICK
+        assert '@' in r   # STEEL
+        assert '~' in r   # WATER
+        assert '%' in r   # FOREST
+        assert '-' in r   # ICE
+        assert '.' in r   # EMPTY
 
 
 # ---------------------------------------------------------------------------
-# TileMap -- metadata (eagle + spawns use x,y only)
+# TileMap -- metadata (eagle + spawns: x,y only)
 # ---------------------------------------------------------------------------
 
 class TestTileMapMetadata:
@@ -677,9 +686,10 @@ class TestTileMapMetadata:
     def test_enemy_spawns_x_y(self, classic_tm):
         es = classic_tm.enemy_spawns
         assert all(hasattr(s, 'x') and hasattr(s, 'y') for s in es)
+        assert all(not hasattr(s, 'col') for s in es)
         assert all(s.y == 0 for s in es)
 
-    def test_xlarge_eagle_x_y(self, xlarge_tm):
+    def test_xlarge_eagle(self, xlarge_tm):
         assert xlarge_tm.eagle.x == 288
         assert xlarge_tm.eagle.y == 384
 
