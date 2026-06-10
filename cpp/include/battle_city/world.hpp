@@ -18,6 +18,7 @@
 
 #include "battle_city/collision.hpp"
 #include "battle_city/config.hpp"
+#include "battle_city/enemy_ai.hpp"
 #include "battle_city/entities.hpp"
 #include "battle_city/game_state.hpp"
 #include "battle_city/map_loader.hpp"
@@ -80,6 +81,9 @@ public:
         if (gs.game_over) return;
 
         apply_actions(actions);
+
+        // enemy AI sets intent + fires (scripted stub; deterministic via RNG)
+        ai::drive_enemies(gs, [this](Tank& t){ try_fire(t); });
 
         // movement
         physics::move_all_tanks(gs);
