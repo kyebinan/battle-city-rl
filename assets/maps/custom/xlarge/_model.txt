@@ -56,3 +56,5 @@
 '~' WATER  (3)  -- blocks tanks, bullets pass through
 '%' FOREST (4)  -- hides tanks, bullets pass through
 '-' ICE    (5)  -- passable, causes sliding
+
+Large Map
