@@ -14,8 +14,8 @@ inline constexpr int FPS         = 60;  // physics / game loop tick rate
 inline constexpr int BLOCK_PX    = 8;   // one grid cell in pixels
 inline constexpr int TILE_PX     = 16;  // one logical tile = 2x2 blocks
 inline constexpr int TANK_PX     = 16;  // tank sprite size
-inline constexpr int BULLET_W_PX = 4;   // bullet width
-inline constexpr int BULLET_H_PX = 8;   // bullet height (vertical orientation)
+inline constexpr int BULLET_W_PX = 3;   // bullet short side (across travel)
+inline constexpr int BULLET_H_PX = 4;   // bullet long side (along travel)
 
 // ---------------------------------------------------------------------------
 // Direction

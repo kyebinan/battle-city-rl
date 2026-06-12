@@ -30,8 +30,7 @@ inline const char* dir_name(config::Direction d) {
     return "up";
 }
 
-inline std::string tank_sprite(const Tank& t, int anim_frame /*0|1*/,
-                               const std::string& assets) {
+inline std::string tank_sprite(const Tank& t, int anim_frame /*0|1*/, const std::string& assets) {
     const char* d = dir_name(t.direction);
     const int f = anim_frame & 1;
     if (t.is_player()) {

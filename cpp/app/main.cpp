@@ -35,8 +35,7 @@ struct TexCache {
         auto it = map.find(path);
         if (it != map.end()) return it->second;
         SDL_Texture* tex = IMG_LoadTexture(r, path.c_str());
-        if (!tex) std::fprintf(stderr, "missing texture: %s (%s)\n",
-                               path.c_str(), IMG_GetError());
+        if (!tex) std::fprintf(stderr, "missing texture: %s (%s)\n", path.c_str(), IMG_GetError());
         map[path] = tex;
         return tex;
     }
@@ -53,7 +52,8 @@ static void blit(SDL_Renderer* r, SDL_Texture* t, int px, int py, int w, int h) 
 }
 
 int main(int argc, char** argv) {
-    (void)argc; (void)argv;
+    (void)argc; 
+    (void)argv;
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1;
@@ -73,10 +73,8 @@ int main(int argc, char** argv) {
     const int win_w = tmpl.map.pixel_width()  * SCALE;
     const int win_h = tmpl.map.pixel_height() * SCALE;
 
-    SDL_Window* win = SDL_CreateWindow("Battle City (engine preview)",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h, 0);
-    SDL_Renderer* ren = SDL_CreateRenderer(win, -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    SDL_Window* win = SDL_CreateWindow("Battle City (engine preview)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h, 0);
+    SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
     TexCache cache; cache.r = ren;
 
@@ -168,8 +166,7 @@ int main(int argc, char** argv) {
         // bullets
         for (auto& b : w.gs.bullets) {
             if (!b.alive) continue;
-            blit(ren, cache.get(app::bullet_sprite(b, ASSETS)),
-                 b.x, b.y, b.w, b.h);
+            blit(ren, cache.get(app::bullet_sprite(b, ASSETS)), b.x, b.y, b.w, b.h);
         }
 
         SDL_RenderPresent(ren);

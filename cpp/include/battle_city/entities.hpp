@@ -95,9 +95,7 @@ struct Bullet {
 
 // Factory: compute a bullet's initial geometry from the firing tank, centred on
 // the barrel tip (port of Bullet.from_tank). The owning system assigns the id.
-inline Bullet make_bullet_from_tank(const Tank& t,
-                                    BulletSpeed speed,
-                                    bool destroys_steel) {
+inline Bullet make_bullet_from_tank(const Tank& t, BulletSpeed speed, bool destroys_steel) {
     Bullet b;
     b.direction = t.direction;
     b.owner_id  = t.id;
